@@ -12,7 +12,7 @@ Ring 1 (assigned) ────────────────────�
 Ring 3 (assigned) ──────────────────────────────┘
 ```
 
-Create a fifth, internal security group named something like `SG-Deployment-Ring2-Eligible`. Make it a **Dynamic User** group and put the business condition in its normal Entra dynamic-membership rule. For example, to target active internal users whose department is Engineering:
+Create a fifth, internal security group named something like `SG-Deployment-Ring-Eligible`. Make it a **Dynamic User** group and put the business condition in its normal Entra dynamic-membership rule. This is the population eligible to participate in the ring program; it is not specific to Ring 2. For example, to target active internal users whose department is Engineering:
 
 ```text
 (user.accountEnabled -eq true) -and
@@ -28,12 +28,16 @@ Ring 2 = Eligible − (Ring 0 ∪ Ring 1 ∪ Ring 3)
 
 It adds every missing desired user and removes every Ring 2 user who is no longer eligible or has entered an exclusion ring. It never changes Rings 0, 1, or 3.
 
+### Naming is configurable
+
+All group names in this guide are examples. The implementation never looks up or evaluates a group by display name: it receives the immutable object IDs of the five groups as runbook parameters. You can therefore use any local naming convention for the eligibility group and the four ring groups. The parameter names describe each group's **role** in the calculation, not its required display name.
+
 Do **not** make Ring 2 dynamic and do not use the `memberOf` dynamic-rule preview for this. Microsoft documents that `memberOf` cannot be combined with another rule or used for exclusions, and advises avoiding it in production because it remains preview functionality. The eligibility group itself uses stable, attribute-based dynamic membership; the short runbook supplies the missing group-exclusion logic. See [dynamic membership rules](https://learn.microsoft.com/en-us/entra/identity/users/groups-dynamic-membership) and [the `memberOf` preview limitations](https://learn.microsoft.com/en-us/entra/identity/users/groups-dynamic-rule-member-of).
 
 ## One-time setup
 
 1. Create four **assigned Security** groups: `Ring 0 Users`, `Ring 1 Users`, `Ring 2 Users`, and `Ring 3 Users`. Do not use a role-assignable group for Ring 2.
-2. Create the `Ring2-Eligible` dynamic-user security group and define the eligibility rule. Make attribute ownership clear: anyone able to edit attributes used by this rule can alter Ring 2 targeting.
+2. Create the `Ring-Eligible` dynamic-user security group and define the eligibility rule. Make attribute ownership clear: anyone able to edit attributes used by this rule can alter ring-program targeting.
 3. Create an Azure Automation Account using a PowerShell 7.2 runbook, enable its **system-assigned managed identity**, and import the `Microsoft.Graph.Authentication` module (v2.x).
 4. Grant the managed identity the Microsoft Graph **application** permission `GroupMember.ReadWrite.All` and grant tenant-wide admin consent. This is the least-privileged Graph application permission for adding and removing user group members; the runbook only reads member IDs and changes Ring 2. Do not grant `Directory.ReadWrite.All`.
 5. Publish [Sync-Ring2Membership.ps1](./src/Sync-Ring2Membership.ps1) as the runbook. Configure the five group-object-ID parameters on the schedule, starting with `-WhatIf` for the first run.
@@ -82,7 +86,7 @@ For the first execution, append `-WhatIf`. It produces the counts and IDs that w
 
 This design has no server, secret, certificate rotation, or third-party service. Azure Automation bills by job runtime; its Basic SKU includes the first 500 job-runtime minutes per subscription per month. A small hourly reconciliation normally fits easily within that allowance, but the allowance is shared with other Automation jobs in the subscription. Confirm your subscription's billing and run duration before relying on the free allocation. [Azure Automation billing and limits](https://learn.microsoft.com/en-us/azure/automation/automation-subscription-limits-faq)
 
-Routine support is limited to reviewing a failed-job alert. Changes to the eligibility rule occur in Entra on the `Ring2-Eligible` group and require no runbook code changes.
+Routine support is limited to reviewing a failed-job alert. Changes to the eligibility rule occur in Entra on the `Ring-Eligible` group and require no runbook code changes.
 
 ## Important operating boundaries
 

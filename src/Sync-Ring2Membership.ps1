@@ -28,11 +28,7 @@ param(
 
     [Parameter(Mandatory)]
     [ValidatePattern('^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$')]
-    [string]$Ring3GroupId,
-
-    [Parameter()]
-    [ValidatePattern('^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$')]
-    [string]$TenantId
+    [string]$Ring3GroupId
 )
 
 Set-StrictMode -Version Latest
@@ -56,7 +52,8 @@ function Get-DirectUserIds {
                 $ids.Add([string]$member.id)
             }
         }
-        $uri = $page.'@odata.nextLink'
+        $nextLinkProperty = $page.PSObject.Properties['@odata.nextLink']
+        $uri = if ($null -ne $nextLinkProperty) { [string]$nextLinkProperty.Value } else { $null }
     } while (-not [string]::IsNullOrWhiteSpace($uri))
 
     return $ids
@@ -66,7 +63,8 @@ function New-StringSet {
     [CmdletBinding()]
     param()
 
-    return [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $set = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    Write-Output -NoEnumerate $set
 }
 
 function Invoke-MembershipBatch {
@@ -96,12 +94,12 @@ function Invoke-MembershipBatch {
     }
 }
 
+$graphSessionOpened = $false
+
 try {
-    $connectParameters = @{ Identity = $true; NoWelcome = $true }
-    if (-not [string]::IsNullOrWhiteSpace($TenantId)) {
-        $connectParameters.TenantId = $TenantId
-    }
-    Connect-MgGraph @connectParameters
+    Import-Module Microsoft.Graph.Authentication -ErrorAction Stop
+    Connect-MgGraph -Identity -NoWelcome
+    $graphSessionOpened = $true
 
     $eligible = New-StringSet
     foreach ($id in Get-DirectUserIds -GroupId $EligibilityGroupId) {
@@ -170,5 +168,7 @@ try {
     Write-Output 'Ring 2 membership reconciliation completed successfully.'
 }
 finally {
-    Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
+    if ($graphSessionOpened -and (Get-Command Disconnect-MgGraph -ErrorAction SilentlyContinue)) {
+        Disconnect-MgGraph -ErrorAction SilentlyContinue | Out-Null
+    }
 }
